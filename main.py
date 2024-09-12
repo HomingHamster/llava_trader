@@ -1,15 +1,30 @@
-import json
+import warnings
+warnings.filterwarnings("ignore", category=FutureWarning)
 
-import pandas as pd
+from numpy import mean
 import plotly.graph_objects as go
 from datetime import datetime
 import numpy as np
 import ta
 import yfinance as yf
-import ollama
-from yfinance import tickers
+import requests
+import base64
 
-tech_list = ['AAPL', 'GOOG', 'MSFT', 'AMZN']
+# OpenAI API Key
+#TODO: DONT PUBLISH KEY
+api_key = ""
+
+headers = {
+  "Content-Type": "application/json",
+  "Authorization": f"Bearer {api_key}"
+}
+
+# Function to encode the image
+def encode_image(image_path):
+  with open(image_path, "rb") as image_file:
+    return base64.b64encode(image_file.read()).decode('utf-8')
+
+tech_list = ['NVDA']
 
 end = datetime.now()
 start = datetime(end.year - 1, end.month, end.day)
@@ -21,18 +36,7 @@ for ticker in tech_list:
     daily = ta.add_all_ta_features(stock[ticker], open="Open", high="High", low="Low", close="Close", volume="Volume")
 
 
-def full_plot(name, df):
-    '''
-    RETRIEVE ALL CODE FROM CODE BLOCKS ABOVE:
-    * Choose Ticker, Start Date, and periods
-    * Alpha Vantage get data
-    * Renaming daily data
-    * Current Date and Time
-    * Setting dates for data
-    * Converting data into dataframes
-    * Subseting dataframes to start at start_date and end at current_date
-    '''
-
+def plot(name, df):
     # Individual Plot Elements:
 
     ## OHLC Candlestick Chart
@@ -180,13 +184,14 @@ def full_plot(name, df):
                                   gridwidth=1,  # gridwidth on x-axis marks
                                   gridcolor='rgb(204,204,204)',  # grid color
 
-                                  # Define ranges to view data. I chose 3 months, 6 months, 1 year, and year to date
-                                  rangeselector=dict(
-                                      buttons=(dict(count=3, label='3 mo', step='month', stepmode='backward'),
-                                               dict(count=6, label='6 mo', step='month', stepmode='backward'),
-                                               dict(count=1, label='1 yr', step='year', stepmode='backward'),
-                                               dict(count=1, label='YTD', step='year', stepmode='todate'),
-                                               dict(step='all')))),
+                                  #Define ranges to view data. I chose 3 months, 6 months, 1 year, and year to date
+                                  # rangeselector=dict(
+                                  #     buttons=(dict(count=3, label='3 mo', step='month', stepmode='backward'),
+                                  #              dict(count=6, label='6 mo', step='month', stepmode='backward'),
+                                  #              dict(count=1, label='1 yr', step='year', stepmode='backward'),
+                                  #              dict(count=1, label='YTD', step='year', stepmode='todate'),
+                                  #              dict(step='all')))
+                                  ),
 
                        # Define different y-axes for each of our plots: daily, volume, MACD, and RSI -- hence 4 y-axes
                        yaxis=dict(domain=[0.40, 1.0], fixedrange=False,
@@ -221,10 +226,11 @@ def full_plot(name, df):
                                    gridcolor='rgb(204,204,204)'),
                        title=(name + ' Daily Data'),  # Give our plot a title
                        title_x=0.5,  # Center our title
-                       paper_bgcolor='rgba(37,37,37,0)',  # Background color of main background
+                       paper_bgcolor='rgba(37,37,37)',  # Background color of main background
                        plot_bgcolor='rgb(226,238,245)',  # Background color of plot
-                       height=900,  # overall height of plot
-                       margin=dict(l=60, r=20, t=50, b=5)  # define margins: left, right, top, and bottom
+                       height=2700, # overall height of plot
+                       width=1500,
+                       margin=dict(l=20, r=20, t=30, b=5)  # define margins: left, right, top, and bottom
                        )
 
     # All individual plots in data element
@@ -240,35 +246,88 @@ def full_plot(name, df):
     # fig.write_html('first_figure.html', auto_open=True)
     fig.write_image("plots/" + name + ".png")
 
+    return "plots/" + name + ".png"
 
-def ask_llava(tickers_var):
+
+def ask(image_path):
+    print("generating prediction")
+
+    base64_image = encode_image(image_path)
+
+    payload = {
+
+        "model": "gpt-4o",
+        "n": 7,
+        "messages": [
+            {"role": "system", "content": 'You are an expert financial analyst. You are part of an API. You will always'
+                                          ' without fail return the necessary value and never anything else or any '
+                                          'supporting information. You always do the best you can with the information'
+                                          ' you have. You output a projected stock price and a confidence value '
+                                          'separated by a space and nothing else. e.g. <price> <confidence>%'},
+            {
+                "role": "user",
+                "content": [
+                    {"type": "text", "text": "Please give a one day projection and confidence rating for the "
+                                             "stock price based on the attached information."},
+                    {
+                      "type": "image_url",
+                      "image_url": {
+                        "url": f"data:image/jpeg;base64,{base64_image}"
+                      }
+                    },
+                ],
+            }
+        ],
+        "max_tokens": 20
+    }
+
     while True:
-        try:
-            print("running ollama")
-            response = ollama.chat(model='llava:7b-v1.6-vicuna-q3_K_S', messages=[
-                {"role": "system", "content": 'You are an expert financial analyst. You output only valid JSON '
-                                              'with no other supporting information.'},
-                {
-                    'role': 'user',
-                    'content': 'Using the provided images, please come up with a portfolio for the day based on '
-                               'if the provided stocks are going up in the next day or down. The only things you '
-                               'need to include are the ticker name and the percentage of the total investment capital '
-                               'to invest in it. Aim to maximise the use of the investment capital by using the full '
-                               'amount unless all stocks are likely to go down. If the percentages add up to more '
-                               'than 100, its wrong, the percentages should add up to 100 or 0. examples:\n'
-                               'example 1 output {"AAPL": 27, "GOOG": 73, "MSFT": 0, "AMZN": 0}\n'
-                               'example 2 output {"AAPL": 0, "GOOG": 20, "MSFT": 50, "AMZN": 30}\n'
-                               'example 3 output {"AAPL": 100, "GOOG": 0, "MSFT": 0, "AMZN": 0}\n'
-                               'example 4 output {"AAPL": 0, "GOOG": 0, "MSFT": 0, "AMZN": 0}',
-                    'images': [f'plots/{x}.png' for x in tickers_var],
-                },
-            ])
-            print(response['message']['content'])
-            return json.loads(response['message']['content'])
-        except Exception as e:
-            print(e)
+        response = requests.post("https://api.openai.com/v1/chat/completions", headers=headers, json=payload)
+        response = response.json()
+        response = [x["message"]["content"] for x in response["choices"]]
+
+        low_score = 0
+        values = []
+        scores = []
+
+        for cont in response:
+            if cont[-1] != "%":
+                continue
+            cont = cont[:-1]
+            a = float(cont.split(" ")[0])
+            b = int(cont.split(" ")[1])
+
+            if b >= 55:
+                values.append(a)
+                scores.append(b)
+            else:
+                low_score += 1
+
+        no_outlier_values = []
+        no_outlier_scores = []
+
+        needed_confidence = round(len(values)*0.7)
+
+        if low_score > needed_confidence:
+            return False
+
+        for i in range(len(values)):
+            good_test_values = []
+            for j in range(len(values)):
+                if i != j:
+                    if values[j]*1.15 > values[i] > values[j]*0.85:
+                        good_test_values.append(values[j])
+            if len(good_test_values) > needed_confidence:
+                no_outlier_values.append(values[i])
+                no_outlier_scores.append(scores[i])
+
+        if no_outlier_values and no_outlier_scores:
+            out = float(round(mean(no_outlier_values), 2))
+            out_score = int(round(mean(no_outlier_scores)))
+            return out, out_score
+        else:
+            return False
 
 
 for ticker in tech_list:
-    full_plot(ticker, stock[ticker])
-print(ask_llava(tech_list))
+    print(ask(plot(ticker, stock[ticker])))
