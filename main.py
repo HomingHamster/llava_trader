@@ -12,7 +12,7 @@ import base64
 
 # OpenAI API Key
 #TODO: DONT PUBLISH KEY
-api_key = ""
+api_key = "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"
 
 headers = {
   "Content-Type": "application/json",
@@ -24,19 +24,11 @@ def encode_image(image_path):
   with open(image_path, "rb") as image_file:
     return base64.b64encode(image_file.read()).decode('utf-8')
 
-tech_list = ['NVDA']
-
-end = datetime.now()
-start = datetime(end.year - 1, end.month, end.day)
-
-stock={}
-for ticker in tech_list:
-    stock[ticker] = yf.download(ticker, start, end, interval='1d')
-
-    daily = ta.add_all_ta_features(stock[ticker], open="Open", high="High", low="Low", close="Close", volume="Volume")
-
 
 def plot(name, df):
+    df = ta.add_all_ta_features(df, open="Open", high="High", low="Low", close="Close",
+                                   volume="Volume")
+
     # Individual Plot Elements:
 
     ## OHLC Candlestick Chart
@@ -324,10 +316,22 @@ def ask(image_path):
         if no_outlier_values and no_outlier_scores:
             out = float(round(mean(no_outlier_values), 2))
             out_score = int(round(mean(no_outlier_scores)))
-            return out, out_score
+            return out
         else:
             return False
 
 
-for ticker in tech_list:
-    print(ask(plot(ticker, stock[ticker])))
+if __name__ == "__main__":
+
+    tech_list = ['NVDA']
+
+    end = datetime.now()
+    start = datetime(end.year - 1, end.month, end.day)
+
+    stock = {}
+    for ticker in tech_list:
+        stock[ticker] = yf.download(ticker, start, end, interval='1d')
+        print(stock[ticker].head())
+
+    for ticker in tech_list:
+        print(ask(plot(ticker, stock[ticker])))
