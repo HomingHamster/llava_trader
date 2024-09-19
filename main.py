@@ -11,8 +11,8 @@ import requests
 import base64
 
 # OpenAI API Key
-#TODO: DONT PUBLISH KEY
-api_key = "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"
+# DONT PUBLISH KEY
+api_key = "key"
 
 headers = {
   "Content-Type": "application/json",
